@@ -50,15 +50,146 @@ def _order_box_points(pts: np.ndarray) -> np.ndarray:
     return pts.astype(np.float32)
 
 
+def _long_edge_direction(box_pts: np.ndarray) -> np.ndarray:
+    """Vetor unitário na direção do lado mais comprido de um retângulo (4
+    pontos cíclicos). Usar a direção de uma aresta em vez do ângulo que
+    `cv2.minAreaRect` devolve evita depender da convenção de sinal/faixa
+    desse ângulo (muda entre versões do OpenCV) — a direção de uma aresta
+    real não tem essa ambiguidade.
+    """
+    edges = [box_pts[(i + 1) % 4] - box_pts[i] for i in range(4)]
+    lens = [float(np.linalg.norm(e)) for e in edges]
+    d = edges[int(np.argmax(lens))]
+    n = float(np.linalg.norm(d))
+    return d / n if n > 1e-6 else np.array([1.0, 0.0], dtype=np.float32)
+
+
+def _find_header_band_rect(image_bgr: np.ndarray, x1: int, y1: int, x2: int, y2: int):
+    """Acha o retângulo mínimo (rotacionado) da faixa azul Mercosul perto da
+    caixa detectada, ou None. A faixa é um alvo mais fácil que a placa
+    inteira pra achar por cor: cor bem distintiva, sem se misturar com pneu/
+    carenagem/asfalto do jeito que o contorno da placa inteira se mistura.
+    """
+    h, w = image_bgr.shape[:2]
+    box_w, box_h = x2 - x1, y2 - y1
+    margin_x, margin_y = int(box_w * 0.4), int(box_h * 0.4)
+    cx1, cy1 = max(0, x1 - margin_x), max(0, y1 - margin_y)
+    cx2, cy2 = min(w, x2 + margin_x), min(h, y2 + margin_y)
+    crop = image_bgr[cy1:cy2, cx1:cx2]
+    if crop.shape[0] < 6 or crop.shape[1] < 6:
+        return None
+
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    lo = np.array([_BLUE_HUE_RANGE[0], _BLUE_SAT_MIN, _BLUE_VAL_MIN])
+    hi = np.array([_BLUE_HUE_RANGE[1], 255, 255])
+    mask = cv2.inRange(hsv, lo, hi)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    box_area = box_w * box_h
+    best, best_area = None, 0.0
+    for c in contours:
+        area = cv2.contourArea(c)
+        # a faixa cobre a largura inteira da placa mas só uma fatia da
+        # altura — mesmo assim deve ser uma fração razoável da área da
+        # caixa (senão é ruído: reflexo, pontinha de algo azul ao fundo).
+        if area < box_area * 0.06:
+            continue
+        rect = cv2.minAreaRect(c)
+        (rw, rh) = rect[1]
+        if rw <= 0 or rh <= 0:
+            continue
+        ratio = max(rw, rh) / min(rw, rh)
+        if not (1.8 <= ratio <= 15):  # a faixa é bem alongada, não é a placa toda
+            continue
+        if area > best_area:
+            best_area, best = area, rect
+
+    if best is None:
+        return None
+    pts = cv2.boxPoints(best)
+    pts[:, 0] += cx1
+    pts[:, 1] += cy1
+    return pts
+
+
+def _quad_from_header_band(x1: int, y1: int, x2: int, y2: int, band_pts: np.ndarray) -> np.ndarray | None:
+    """Reconstrói o quadrilátero da placa inteira a partir da inclinação e
+    largura precisas da faixa de cabeçalho, combinadas com a área da caixa
+    axis-aligned do detector (confiável para o tamanho, não para o ângulo).
+
+    A faixa dá a direção exata do eixo comprido da placa e sua largura real
+    W (ela atravessa a placa de ponta a ponta). Falta a altura real H da
+    placa — a caixa do detector só dá a extensão *axis-aligned*, que para um
+    retângulo girado é sempre maior que as dimensões reais. Resolve H a
+    partir da relação entre uma caixa alinhada aos eixos e as dimensões
+    reais de um retângulo girado por um ângulo θ:
+
+        bbox_w = W·|cos θ| + H·|sin θ|
+        bbox_h = W·|sin θ| + H·|cos θ|
+
+    (a direção da faixa já dá |cos θ|, |sin θ| diretamente, como as
+    componentes do vetor unitário — sem precisar do ângulo em si).
+    """
+    long_dir = _long_edge_direction(band_pts)
+    cos_t, sin_t = abs(float(long_dir[0])), abs(float(long_dir[1]))
+
+    band_w, band_h = cv2.minAreaRect(band_pts.astype(np.float32))[1]
+    width_est = max(band_w, band_h)
+
+    box_w, box_h = x2 - x1, y2 - y1
+    # Duas equações disponíveis (bbox_w = W·cos_t + H·sin_t, bbox_h = W·sin_t
+    # + H·cos_t); usa a que tem o divisor maior, mais estável numericamente
+    # perto de ângulos próximos de 0°/90° (onde o outro divisor vai a zero).
+    if cos_t >= sin_t:
+        height_est = (box_h - width_est * sin_t) / cos_t if cos_t > 1e-3 else None
+    else:
+        height_est = (box_w - width_est * cos_t) / sin_t if sin_t > 1e-3 else None
+
+    if height_est is None or width_est <= 0:
+        return None
+
+    ratio = max(width_est, height_est) / max(1.0, min(width_est, height_est))
+    if not (1.0 <= ratio <= 2.4) or height_est <= 4:
+        return None
+
+    short_dir = np.array([-long_dir[1], long_dir[0]], dtype=np.float32)
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    hw, hh = width_est / 2.0, height_est / 2.0
+    corners = np.array(
+        [
+            [cx - long_dir[0] * hw - short_dir[0] * hh, cy - long_dir[1] * hw - short_dir[1] * hh],
+            [cx + long_dir[0] * hw - short_dir[0] * hh, cy + long_dir[1] * hw - short_dir[1] * hh],
+            [cx + long_dir[0] * hw + short_dir[0] * hh, cy + long_dir[1] * hw + short_dir[1] * hh],
+            [cx - long_dir[0] * hw + short_dir[0] * hh, cy - long_dir[1] * hw + short_dir[1] * hh],
+        ],
+        dtype=np.float32,
+    )
+    return corners
+
+
 def find_plate_quad(image_bgr: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray | None:
     """Tenta achar o quadrilátero real da placa (rotacionado) dentro/perto da
     caixa detectada. Devolve 4 pontos (float32, ordem cíclica) em coordenadas
     da imagem original, ou None se nada plausível for encontrado.
+
+    Duas estratégias, nessa ordem:
+    1. Via faixa de cabeçalho azul (mais robusta — a faixa é um alvo de cor
+       muito mais distintivo e isolado que a placa inteira, que se mistura
+       com pneu/carenagem/asfalto quando tentamos achar o contorno dela
+       direto). Só serve pra placas Mercosul com cabeçalho identificável.
+    2. Contorno genérico (Canny + approxPolyDP) como antes — mais frágil,
+       mas não depende de ter uma faixa azul.
     """
     h, w = image_bgr.shape[:2]
     box_w, box_h = x2 - x1, y2 - y1
     if box_w <= 4 or box_h <= 4:
         return None
+
+    band_pts = _find_header_band_rect(image_bgr, x1, y1, x2, y2)
+    if band_pts is not None:
+        quad = _quad_from_header_band(x1, y1, x2, y2, band_pts)
+        if quad is not None:
+            return quad
 
     box_area = box_w * box_h
     margin_x = int(box_w * 0.35)

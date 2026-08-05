@@ -95,6 +95,14 @@ Na seção "Processar" da interface:
   "Alta" detecta mais placas, mas pode gerar mais falsos positivos; "Conservadora"
   é mais rígida. Se você notar muitas fotos caindo em "Sem placa" mas com
   placa visível, aumente a sensibilidade.
+- **Limitação conhecida**: em raras fotos, uma placa perfeitamente legível
+  não é detectada mesmo em qualquer sensibilidade — não é um problema de
+  limiar/configuração, é o modelo de detecção em si não reconhecendo aquela
+  placa específica (testado: nem recortando a foto só na placa, bem ampliada,
+  nem trocando pro modelo mais preciso disponível mudou o resultado). Isso é
+  raro, mas quando acontecer, revise manualmente o resultado antes de
+  publicar a foto — o "Sucesso"/"Sem placa" reflete só as placas que o
+  modelo conseguiu identificar.
 - **Redação da placa**: `blur` (desfoque forte, padrão), `pixelate`
   (mosaico) ou `black` (caixa sólida). Todas garantem que a placa fique
   ilegível; a região tratada acompanha o tamanho real da placa (só uma
@@ -138,21 +146,24 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
   quanto do menor dos dois boxes está coberto, não a interseção sobre a
   união (IoU) — resolve isso sem exigir que os dois boxes tenham tamanho
   parecido.
-- **Contorno rotacionado (melhor esforço)**: o sistema tenta achar o
-  contorno real da placa (girado, acompanhando a inclinação de uma moto
-  fotografada em ângulo) por análise clássica de imagem, em vez de usar
-  sempre a caixa alinhada aos eixos do detector — quando encontra com
-  confiança, o desfoque acompanha essa inclinação em vez de ficar sempre
-  "reto" na foto. Isso é bem mais frágil que a detecção do modelo (fotos
-  reais têm barro, reflexo, objetos encostados na placa, o que confunde
-  contorno) e por isso cai para a caixa alinhada aos eixos sempre que não
-  encontra um contorno confiável — o que, testado contra fotos reais, é o
-  caminho mais comum hoje. Sub-produto disso: quando o cabeçalho azul é
-  preservado numa placa inclinada sem um contorno confiável, o corte entre
-  cabeçalho e corpo é uma linha reta na foto (não acompanha a inclinação
-  real da placa), então pode sobrar um pouquinho de desfoque avançando
-  sobre a pontinha do cabeçalho de um dos lados — sempre errando para o
-  lado de borrar a mais, nunca a menos.
+- **Desfoque acompanha a inclinação real da placa**: em vez de sempre borrar
+  a caixa alinhada aos eixos do detector (que numa moto em ângulo sobra
+  fundo nos quatro cantos), o sistema tenta reconstruir o retângulo real
+  (girado) da placa. Duas estratégias, na ordem:
+  1. **Via faixa azul Mercosul**: a faixa "BRASIL" é um alvo de cor bem mais
+     fácil de isolar do que a placa inteira (não se mistura com pneu/
+     carenagem/asfalto do jeito que o contorno da placa toda se mistura).
+     A inclinação e a largura exatas da faixa, combinadas com a área da
+     caixa do detector, bastam pra reconstruir o retângulo completo da
+     placa — funciona bem mesmo com a moto bem inclinada.
+  2. **Contorno genérico** (Canny + aproximação poligonal) como plano B,
+     pra placas sem faixa azul identificável. Mais frágil — cai pra caixa
+     alinhada aos eixos com frequência em fotos reais (barro, reflexo,
+     objetos encostados na placa atrapalham o contorno).
+
+  Sempre que nenhuma das duas encontra um resultado confiável, usa a caixa
+  alinhada aos eixos — mais fundo ao redor da placa do que o ideal, mas
+  nunca deixa parte da placa de fora do desfoque.
 
 Variáveis de ambiente (opcionais, definidas antes de rodar `python3 run.py`):
 

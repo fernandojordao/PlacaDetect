@@ -87,3 +87,54 @@ def test_pad_body_polygon_never_shrinks_and_preserves_header_edge():
     # cabeçalho - o topo do polígono expandido não pode ficar acima do corte
     # original (senão estaria comendo de volta a faixa que devia ficar visível)
     assert padded[:, 1].min() >= body[:, 1].min() - 1e-3
+
+
+def _rotated_synthetic_plate(width, height, header_height, angle_deg, canvas=420):
+    """Mesma placa sintética, mas desenhada já rotacionada no canvas (rotaciona
+    a arte inteira, não só os pontos) — testa o pipeline completo de detecção
+    de ângulo via cor, não só a matemática de reconstrução do quad."""
+    plate = np.zeros((height, width, 3), dtype=np.uint8)
+    plate[:header_height] = (200, 140, 30)
+    plate[header_height:] = (230, 230, 230)
+
+    img = np.full((canvas, canvas, 3), 40, dtype=np.uint8)
+    cx, cy = canvas // 2, canvas // 2
+    corners_local = np.array(
+        [[-width / 2, -height / 2], [width / 2, -height / 2], [width / 2, height / 2], [-width / 2, height / 2]],
+        dtype=np.float32,
+    )
+    theta = np.radians(angle_deg)
+    rot = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]], dtype=np.float32)
+    dst_corners = (corners_local @ rot.T) + np.array([cx, cy], dtype=np.float32)
+    src_corners = np.array([[0, 0], [width, 0], [width, height], [0, height]], dtype=np.float32)
+    M = cv2.getPerspectiveTransform(src_corners, dst_corners)
+    warped = cv2.warpPerspective(plate, M, (canvas, canvas))
+    mask = cv2.warpPerspective(np.full((height, width), 255, dtype=np.uint8), M, (canvas, canvas))
+    img[mask > 0] = warped[mask > 0]
+
+    axis_box = cv2.boundingRect(dst_corners.astype(np.int32))
+    return img, dst_corners, axis_box
+
+
+def test_find_plate_quad_recovers_tilt_from_header_band():
+    """A caixa axis-aligned do detector (bounding box da placa rotacionada)
+    é sempre maior/imprecisa; find_plate_quad deve reconstruir um
+    quadrilátero que acompanha a inclinação real, não a caixa esticada."""
+    width, height, header_h, angle = 200, 160, 32, 18.0
+    img, true_corners, (bx, by, bw, bh) = _rotated_synthetic_plate(width, height, header_h, angle)
+
+    quad = pg.find_plate_quad(img, bx, by, bx + bw, by + bh)
+    assert quad is not None
+
+    # a área do quad reconstruído deve ficar perto da área real da placa
+    # (bem menor que a da caixa axis-aligned, que é inflada pela rotação)
+    true_area = width * height
+    axis_area = bw * bh
+    quad_area = cv2.contourArea(quad.astype(np.float32))
+    assert axis_area > true_area * 1.05  # confirma que a caixa really infla a área
+    assert abs(quad_area - true_area) / true_area < 0.15
+
+    # cada canto reconstruído deve estar perto de algum canto verdadeiro
+    for corner in quad:
+        dists = np.linalg.norm(true_corners - corner, axis=1)
+        assert dists.min() < 0.08 * max(width, height)
