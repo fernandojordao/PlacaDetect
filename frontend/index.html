@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PlacaDetect</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <span class="logo">🏍️</span>
+      <div>
+        <h1>PlacaDetect</h1>
+        <p>Detecção e ofuscação automática de placas em fotos de motos</p>
+      </div>
+    </div>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <main>
+    <section class="panel" id="import-panel">
+      <h2>1. Importar fotos</h2>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="folder">Pasta local</button>
+        <button class="tab-btn" data-tab="upload">Upload</button>
+      </div>
+
+      <div class="tab-content" id="tab-folder">
+        <p class="hint">Informe o caminho de uma pasta no computador onde este servidor está rodando. Todas as fotos dentro dela (e subpastas) serão listadas para processamento — os arquivos originais não são movidos nem alterados.</p>
+        <div class="row">
+          <input type="text" id="folder-path" placeholder="Ex: C:\Fotos\2026-08-05 ou /home/usuario/fotos" />
+          <label class="checkbox"><input type="checkbox" id="folder-recursive" checked /> incluir subpastas</label>
+          <button id="btn-scan-folder" class="primary">Escanear pasta</button>
+        </div>
+        <p id="folder-result" class="feedback"></p>
+      </div>
+
+      <div class="tab-content hidden" id="tab-upload">
+        <p class="hint">Arraste fotos aqui ou clique para selecionar (bom para lotes pequenos ou testes).</p>
+        <div id="dropzone" class="dropzone">Solte as fotos aqui ou clique para selecionar</div>
+        <input type="file" id="file-input" multiple accept="image/*" class="hidden" />
+        <p id="upload-result" class="feedback"></p>
+      </div>
+    </section>
+
+    <section class="panel" id="process-panel">
+      <h2>2. Processar</h2>
+      <div class="row settings-row">
+        <label>Redação da placa:
+          <select id="redaction-style">
+            <option value="blur">Desfoque (blur)</option>
+            <option value="pixelate">Pixelizar</option>
+            <option value="black">Caixa preta</option>
+          </select>
+        </label>
+        <label>Sensibilidade de detecção:
+          <select id="conf-thresh">
+            <option value="0.15">Alta (mais detecções, pode ter falsos positivos)</option>
+            <option value="0.25" selected>Padrão</option>
+            <option value="0.4">Conservadora</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button id="btn-process" class="primary">Processar pendentes</button>
+        <button id="btn-reprocess-errors" class="secondary">Reprocessar erros</button>
+        <button id="btn-cancel" class="danger hidden">Cancelar</button>
+      </div>
+      <div id="progress-wrap" class="hidden">
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <p id="progress-text"></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="gallery-header">
+        <h2>3. Resultados</h2>
+        <div class="filters" id="filters">
+          <button class="filter-btn active" data-status="all">Todos</button>
+          <button class="filter-btn" data-status="pending">Pendente</button>
+          <button class="filter-btn" data-status="success">✅ Sucesso</button>
+          <button class="filter-btn" data-status="no_plate">⚠️ Sem placa</button>
+          <button class="filter-btn" data-status="error">❌ Erro</button>
+        </div>
+        <div class="gallery-actions">
+          <button id="btn-download-success" class="secondary">Baixar prontos (.zip)</button>
+          <button id="btn-refresh" class="secondary">Atualizar</button>
+        </div>
+      </div>
+      <div id="gallery" class="gallery"></div>
+      <div id="pagination" class="pagination"></div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <button id="modal-close" class="modal-close">×</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
