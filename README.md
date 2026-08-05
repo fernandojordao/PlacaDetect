@@ -111,11 +111,12 @@ Na seção "Processar" da interface:
   identificar.
 - **Redação da placa**: `blur` (desfoque forte, padrão), `pixelate`
   (mosaico) ou `black` (caixa sólida). Todas garantem que a placa fique
-  ilegível; a região tratada acompanha o tamanho real da placa (só uma
-  margem pequena a mais, para cobrir imprecisão da detecção em ângulo) e a
-  borda é suavizada numa faixa fina, para não parecer um adesivo colado por
-  cima — nem um borrão grande demais que chama mais atenção que a própria
-  placa.
+  ilegível; a região tratada é exatamente o contorno real da placa (ver
+  abaixo) — nada de margem pra fora dele. A borda é suavizada só PRA DENTRO
+  desse contorno (uma faixa fina próxima à borda fica com opacidade um
+  pouco menor, em vez de um corte seco de 100%→0%), então a transição funde
+  com a própria placa sem nunca vazar desfoque sobre o que está ao redor
+  dela (guidão, pneu, parede).
 - **Cabeçalho "BRASIL" preservado**: em placas padrão Mercosul, a faixa azul
   no topo (BRASIL + QR) é identificada por cor e mantida visível — só a
   parte com letras/números é redigida, no mesmo espírito de como as placas
@@ -168,8 +169,13 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
      objetos encostados na placa atrapalham o contorno).
 
   Sempre que nenhuma das duas encontra um resultado confiável, usa a caixa
-  alinhada aos eixos — mais fundo ao redor da placa do que o ideal, mas
-  nunca deixa parte da placa de fora do desfoque.
+  alinhada aos eixos do detector — mais fundo ao redor da placa do que o
+  ideal, mas nunca deixa parte da placa de fora do desfoque. Em nenhum dos
+  casos a área tratada ultrapassa o contorno usado: não existe mais uma
+  margem extra "por segurança" que espalhe o desfoque para além da placa
+  (isso chegou a acontecer e foi reportado — o desfoque vazava visivelmente
+  sobre o pneu/carenagem ao redor; a margem de padding foi removida, a
+  suavização da borda agora fica inteiramente contida dentro do contorno).
 
 Variáveis de ambiente (opcionais, definidas antes de rodar `python3 run.py`):
 

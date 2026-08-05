@@ -73,22 +73,6 @@ def test_header_cut_returns_none_without_blue_band():
     assert pg.find_header_cut(img, quad) is None
 
 
-def test_pad_body_polygon_never_shrinks_and_preserves_header_edge():
-    img, quad, (x0, y0) = _synthetic_plate(width=200, height=160, header_height=30)
-    body = pg.find_header_cut(img, quad)
-    padded = pg.pad_body_polygon(body, 0.08)
-
-    # a borda "de baixo" (fim real da placa) deve se expandir pra fora
-    assert padded[:, 1].max() > body[:, 1].max()
-    # a borda esquerda/direita deve se expandir pra fora
-    assert padded[:, 0].min() < body[:, 0].min()
-    assert padded[:, 0].max() > body[:, 0].max()
-    # a borda do corte (perto do cabeçalho) NÃO deve avançar sobre o
-    # cabeçalho - o topo do polígono expandido não pode ficar acima do corte
-    # original (senão estaria comendo de volta a faixa que devia ficar visível)
-    assert padded[:, 1].min() >= body[:, 1].min() - 1e-3
-
-
 def _rotated_synthetic_plate(width, height, header_height, angle_deg, canvas=420):
     """Mesma placa sintética, mas desenhada já rotacionada no canvas (rotaciona
     a arte inteira, não só os pontos) — testa o pipeline completo de detecção

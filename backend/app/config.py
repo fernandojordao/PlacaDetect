@@ -63,16 +63,13 @@ PLATE_SQUARE_MIN_CONF = 0.75
 # Estilo de redação aplicado sobre a placa detectada: "blur" | "pixelate" | "black"
 DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
 
-# Expande a caixa detectada em X% para garantir cobertura total da placa
-# (o detector é axis-aligned; motos inclinadas podem ter a placa levemente
-# fora da caixa se não houver essa margem) e para sobrar uma margem mínima
-# onde a borda do blur possa suavizar. Mantido pequeno de propósito: a área
-# tratada deve acompanhar o tamanho real da placa, não um halo grande ao
-# redor dela — senão o resultado chama mais atenção do que a própria placa.
-# É esse padding (não a força do blur) que controla o "tamanho" visual do
-# desfoque: a placa em si (dentro da caixa original) já fica 100% coberta
-# independente do valor aqui — reduzir isso só encolhe a margem de transição
-# ao redor, deixando o resultado mais colado à placa.
+# NÃO é mais uma margem que expande a área tratada para além do contorno
+# detectado da placa — isso "vazava" desfoque em cima do que está ao redor
+# (guidão, pneu, parede), o que o usuário pediu explicitamente para não
+# acontecer: a região borrada tem que ficar contida exatamente no contorno
+# real da placa. É só a espessura relativa da faixa de transição suave na
+# borda (fração do menor lado da placa), pra não ser um corte seco — o
+# esmaecimento acontece só PRA DENTRO desse contorno, nunca pra fora dele.
 BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.08"))
 
 THUMBNAIL_MAX_SIZE = 480

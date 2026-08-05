@@ -291,9 +291,7 @@ def _split_quad(quad: np.ndarray, t: float) -> tuple[np.ndarray, np.ndarray]:
     Devolve (parte_perto_de_p0p1, parte_perto_de_p2p3), cada uma já na ordem
     canônica [ponto_de_corte, canto_real, canto_real, ponto_de_corte] — a
     borda entre o último e o primeiro ponto (wraparound) é sempre a linha de
-    corte; a borda do meio é sempre a borda real da placa naquela ponta. Isso
-    deixa `pad_body_polygon` livre de se importar com qual lado foi escolhido
-    como corpo.
+    corte; a borda do meio é sempre a borda real da placa naquela ponta.
     """
     p0, p1, p2, p3 = quad
     cut_near_01 = p0 + t * (p3 - p0)
@@ -368,50 +366,3 @@ def find_header_cut(image_bgr: np.ndarray, quad: np.ndarray) -> np.ndarray | Non
 
     _, body = _split_quad(box_pts, header_t)
     return body
-
-
-def pad_quad(quad: np.ndarray, padding_ratio: float) -> np.ndarray:
-    """Expande um quad uniformemente a partir do centro (equivalente ao padding
-    axis-aligned de antes, generalizado pra qualquer retângulo rotacionado).
-    Usado quando não há corte de cabeçalho (a placa inteira vai ser borrada, e
-    não existe uma borda "protegida" a preservar)."""
-    center = quad.mean(axis=0)
-    return (quad - center) * (1 + padding_ratio) + center
-
-
-def pad_body_polygon(body: np.ndarray, padding_ratio: float) -> np.ndarray:
-    """Expande o polígono do "corpo" (devolvido por `find_header_cut`) só nas
-    3 bordas que são a borda real da placa — nunca na borda do corte, que é
-    onde o cabeçalho preservado começa. Empurrar essa borda pra fora comeria
-    de volta a faixa que o usuário pediu pra manter visível.
-
-    `body` segue sempre a ordem [cut_a, corner_1, corner_2, cut_b] devolvida
-    por `_split_quad` (dois pontos de corte, dois cantos reais da placa).
-    """
-    cut_a, corner_1, corner_2, cut_b = body
-
-    # Direção "pra longe do corte": da linha de corte até a borda real —
-    # nessa direção, corner_1/corner_2 (a borda real) avançam pra fora;
-    # cut_a/cut_b (a borda do corte, vizinha ao cabeçalho) não se mexem nela.
-    away_dir = (corner_1 + corner_2) / 2 - (cut_a + cut_b) / 2
-    away_len = float(np.linalg.norm(away_dir))
-    away_dir = away_dir / away_len if away_len > 1e-6 else np.zeros(2, dtype=np.float32)
-
-    # Direção lateral: ao longo da própria linha de corte (== ao longo da
-    # borda real corner_1-corner_2), não da aresta lateral cut_a-corner_1
-    # (essa aresta lateral aponta na mesma direção de `away_dir`, não seria
-    # perpendicular a ela — usar ela aqui empurraria a linha de corte pra
-    # dentro do cabeçalho de um lado, o bug original desta função).
-    side_vec = corner_1 - corner_2
-    side_len = float(np.linalg.norm(side_vec))
-    side_dir = side_vec / side_len if side_len > 1e-6 else np.zeros(2, dtype=np.float32)
-
-    pad_away = away_len * padding_ratio
-    pad_side = side_len * padding_ratio
-
-    new_cut_a = cut_a + side_dir * pad_side
-    new_cut_b = cut_b - side_dir * pad_side
-    new_corner_1 = corner_1 + side_dir * pad_side + away_dir * pad_away
-    new_corner_2 = corner_2 - side_dir * pad_side + away_dir * pad_away
-
-    return np.array([new_cut_a, new_corner_1, new_corner_2, new_cut_b], dtype=np.float32)

@@ -36,32 +36,26 @@ def _odd(value: int) -> int:
     return value if value % 2 == 1 else value + 1
 
 
-def _feather_mask_poly(
-    roi_h: int, roi_w: int, core_poly: np.ndarray, outer_poly: np.ndarray, feather_px: int
-) -> np.ndarray:
-    """Máscara com a região `core_poly` em opacidade total, esmaecendo
-    suavemente até 0 fora de `outer_poly`.
+def _feather_mask_poly(roi_h: int, roi_w: int, poly: np.ndarray, feather_px: int) -> np.ndarray:
+    """Máscara em opacidade total dentro de `poly`, esmaecendo suavemente só
+    para DENTRO perto da borda — nunca se estende além do polígono.
 
-    Versão poligonal de `_feather_mask` (mesma ideia, generalizada pra
-    acompanhar um retângulo rotacionado/recortado em vez de só axis-aligned):
-    a "semente" é `outer_poly` (a área já com a margem de padding), borrada
-    pra suavizar a borda; `core_poly` (a placa/corpo real, sem padding) é
-    reforçada pra nunca ficar abaixo de opacidade quase total, garantindo que
-    o platô cheio sempre cubra pelo menos a área que realmente precisa ficar
-    ilegível.
+    Um blur gaussiano comum de uma máscara binária espalha pros dois lados da
+    borda (a região tratada acabaria maior que `poly`, que é exatamente o que
+    não pode acontecer: o desfoque tem que ficar contido na área real da
+    placa, sem sobrar em cima do que está ao redor dela). Truncar o blur pelo
+    valor original da máscara (`np.minimum`) garante isso: fora de `poly` o
+    valor da semente já era 0 e continua 0; dentro, o blur só pode reduzir a
+    opacidade perto da borda, nunca "vazar" pra fora dela.
     """
-    feather_px = max(3, feather_px)
+    feather_px = max(1, feather_px)
 
     seed = np.zeros((roi_h, roi_w), dtype=np.float32)
-    cv2.fillPoly(seed, [np.round(outer_poly).astype(np.int32)], 1.0)
+    cv2.fillPoly(seed, [np.round(poly).astype(np.int32)], 1.0)
 
     ksize = _odd(feather_px * 2 + 1)
-    mask = cv2.GaussianBlur(seed, (ksize, ksize), 0, borderType=cv2.BORDER_CONSTANT)
-
-    core_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
-    cv2.fillPoly(core_mask, [np.round(core_poly).astype(np.int32)], 1)
-    mask = np.where(core_mask > 0, np.maximum(mask, 0.98), mask)
-    return np.clip(mask, 0.0, 1.0)
+    blurred = cv2.GaussianBlur(seed, (ksize, ksize), 0, borderType=cv2.BORDER_CONSTANT)
+    return np.minimum(seed, blurred)
 
 
 def redact_plates(
@@ -92,13 +86,14 @@ def redact_plates(
         # visível. Sem confiança nenhuma, borra a placa inteira — mais seguro
         # do que arriscar um corte errado deixando caracteres de fora.
         core_poly = pgeo.find_header_cut(image_bgr, base_quad)
-        if core_poly is not None:
-            outer_poly = pgeo.pad_body_polygon(core_poly, padding_ratio)
-        else:
+        if core_poly is None:
             core_poly = base_quad
-            outer_poly = pgeo.pad_quad(base_quad, padding_ratio)
 
-        rx1, ry1, rw, rh = cv2.boundingRect(np.round(outer_poly).astype(np.int32))
+        # A região tratada é EXATAMENTE `core_poly` — sem margem pra fora
+        # dele. Nada de padding aqui: o usuário quer o desfoque contido só na
+        # área real da placa, acompanhando seu contorno/inclinação, nunca
+        # "vazando" pra cima do que está ao redor (guidão, pneu, parede).
+        rx1, ry1, rw, rh = cv2.boundingRect(np.round(core_poly).astype(np.int32))
         x1, y1 = max(0, rx1), max(0, ry1)
         x2, y2 = min(w, rx1 + rw), min(h, ry1 + rh)
         if x2 <= x1 or y2 <= y1:
@@ -108,7 +103,6 @@ def redact_plates(
         roi_h, roi_w = roi.shape[:2]
         offset = np.array([x1, y1], dtype=np.float32)
         core_local = core_poly - offset
-        outer_local = outer_poly - offset
 
         if style == "pixelate":
             factor = 8
@@ -130,17 +124,14 @@ def redact_plates(
             k = _odd(min(71, max(15, box_h * 1.4)))
             treated = cv2.GaussianBlur(roi, (k, k), 0)
 
-        # O corpo real da placa (sem padding) precisa ficar sempre 100%
-        # coberto; o esmaecimento acontece só na margem de padding ao redor
-        # — que agora é pequena de propósito — para que a transição se funda
-        # com o resto da foto em vez de "colar" um retângulo artificial sobre
-        # a placa ou criar um halo maior que ela. Testado visualmente: usar
-        # quase toda a margem de padding pra suavizar (em vez de só metade)
-        # deixa a borda visivelmente mais orgânica/natural, sem esticar a
-        # área tratada além do que o padding já cobre.
+        # O esmaecimento acontece só PRA DENTRO, perto da borda de `core_poly`
+        # — nunca estica a área tratada além do contorno real da placa (ver
+        # `_feather_mask_poly`). `padding_ratio` aqui não é mais uma margem
+        # geométrica: é só a espessura relativa dessa faixa de transição
+        # (fração do menor lado da placa), pra borda não ficar um corte seco.
         min_edge = min(box_w, box_h)
-        feather_px = max(2, int(min_edge * padding_ratio * 0.85))
-        mask = _feather_mask_poly(roi_h, roi_w, core_local, outer_local, feather_px)[..., None]
+        feather_px = max(2, int(min_edge * padding_ratio))
+        mask = _feather_mask_poly(roi_h, roi_w, core_local, feather_px)[..., None]
         blended = roi.astype(np.float32) * (1 - mask) + treated.astype(np.float32) * mask
         out[y1:y2, x1:x2] = blended.astype(np.uint8)
 
