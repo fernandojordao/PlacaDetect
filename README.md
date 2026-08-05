@@ -108,8 +108,12 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
 - **Fotos com várias motos no quadro**: quando a imagem é bem maior que a
   resolução nativa do modelo (comum em fotos horizontais com várias motos
   lado a lado), o sistema também roda a detecção em recortes sobrepostos da
-  imagem, além da imagem inteira — placas distantes que encolheriam demais
-  numa única passada continuam detectáveis.
+  imagem, no tamanho nativo do modelo, além da imagem inteira — placas
+  distantes que encolheriam demais numa única passada continuam
+  detectáveis, e como esses recortes já veem a placa em resolução mais alta,
+  a caixa que eles devolvem é usada no lugar da caixa (menos precisa) da
+  passada de imagem inteira sempre que as duas se sobrepõem — evita o
+  desfoque cair ao lado da placa em vez de em cima dela.
 - **Menos falsos positivos**: detecções com proporção largura/altura muito
   fora do padrão de uma placa real (por exemplo, um adesivo quadrado na
   moto) são descartadas mesmo que o modelo tenha alguma confiança nelas.

@@ -1,13 +1,20 @@
 """Wrapper em torno do detector de placas (open-image-models / YOLOv9).
 
 O modelo redimensiona a imagem inteira para sua resolução de entrada (ex.: 640x640)
-antes de detectar. Em fotos grandes com várias motos no quadro (comum em fotos de
-estacionamento/pista), as placas mais distantes podem encolher a poucos pixels
-nessa redução e passar despercebidas. Para compensar, além de rodar a detecção na
-imagem inteira, também rodamos em recortes (tiles) sobrepostos do tamanho nativo do
-modelo quando a imagem é bem maior que essa resolução — isso preserva a escala
-original das placas menores. As detecções de todas as passadas são combinadas com
-NMS para remover duplicatas.
+antes de detectar. Em fotos grandes (comum em fotos de celular, várias motos no
+quadro, placas distantes/em ângulo), isso tem duas consequências:
+
+1. Uma placa pequena pode encolher a poucos pixels nessa redução e passar
+   despercebida — por isso também rodamos a detecção em recortes (tiles)
+   sobrepostos no tamanho nativo do modelo.
+2. A caixa devolvida pela passada "imagem inteira" tende a ser geometricamente
+   imprecisa quando o objeto era minúsculo na versão redimensionada (o erro de
+   poucos pixels em 640px vira um erro de dezenas de pixels na foto original).
+   As caixas vindas de um recorte (tile) são bem mais precisas, pois o recorte
+   já está perto da resolução nativa do modelo. Por isso, na hora de combinar
+   detecções, uma caixa de recorte sempre tem prioridade sobre uma caixa da
+   passada de imagem inteira que se sobreponha a ela — evita "sucesso" com o
+   desfoque caindo ao lado da placa em vez de em cima.
 """
 
 from __future__ import annotations
@@ -22,8 +29,7 @@ from open_image_models import create_detector
 from . import config
 
 _lock = threading.Lock()
-_detector = None
-_detector_key: tuple[str, float] | None = None
+_detectors: dict[tuple[str, float], object] = {}
 
 
 @dataclass
@@ -33,6 +39,7 @@ class PlateDetection:
     x2: int
     y2: int
     confidence: float
+    source: str = "full"  # "full" (imagem inteira) ou "tile" (recorte nativo)
 
     def to_dict(self) -> dict:
         return {
@@ -49,22 +56,30 @@ class PlateDetection:
 
 
 def _get_detector(model_name: str, conf_thresh: float):
-    global _detector, _detector_key
     key = (model_name, conf_thresh)
     with _lock:
-        if _detector is None or _detector_key != key:
-            _detector = create_detector(model_name, conf_thresh=conf_thresh)
-            _detector_key = key
-        return _detector
+        detector = _detectors.get(key)
+        if detector is None:
+            detector = create_detector(model_name, conf_thresh=conf_thresh)
+            _detectors[key] = detector
+        return detector
 
 
 def warmup(model_name: str | None = None, conf_thresh: float | None = None) -> None:
-    """Carrega (e baixa, se necessário) o modelo antes do primeiro uso real."""
+    """Carrega (e baixa, se necessário) os modelos antes do primeiro uso real."""
     model_name = model_name or config.DEFAULT_MODEL_NAME
     conf_thresh = conf_thresh if conf_thresh is not None else config.DEFAULT_CONF_THRESH
-    detector = _get_detector(model_name, conf_thresh)
     dummy = np.zeros((64, 64, 3), dtype=np.uint8)
-    detector.predict(dummy)
+    _get_detector(model_name, conf_thresh).predict(dummy)
+    _get_detector(model_name, _tile_conf_thresh(conf_thresh)).predict(dummy)
+
+
+def _tile_conf_thresh(base_conf: float) -> float:
+    """Recortes veem a placa em resolução mais próxima da nativa, então dá pra ser
+    mais permissivo sem tanto risco de falso positivo — ajuda a recall em placas
+    pequenas/em ângulo sem depender de afrouxar o limiar da imagem inteira (que aí
+    sim tende a gerar mais falso positivo, por ver a foto toda em baixa resolução)."""
+    return max(0.12, round(base_conf * 0.6, 3))
 
 
 def _model_input_size(model_name: str) -> int:
@@ -72,7 +87,7 @@ def _model_input_size(model_name: str) -> int:
     return int(match.group(1)) if match else 640
 
 
-def _run_pass(detector, image: np.ndarray, offset_x: int, offset_y: int) -> list[PlateDetection]:
+def _run_pass(detector, image: np.ndarray, offset_x: int, offset_y: int, source: str) -> list[PlateDetection]:
     results = detector.predict(image)
     detections = []
     for result in results:
@@ -84,6 +99,7 @@ def _run_pass(detector, image: np.ndarray, offset_x: int, offset_y: int) -> list
                 x2=bbox.x2 + offset_x,
                 y2=bbox.y2 + offset_y,
                 confidence=float(result.confidence),
+                source=source,
             )
         )
     return detections
@@ -127,16 +143,27 @@ def _plausible_plate_shape(det: PlateDetection) -> bool:
     return lo <= ratio <= hi
 
 
-def _merge_detections(detections: list[PlateDetection], iou_thresh: float = 0.35) -> list[PlateDetection]:
-    ordered = sorted(
-        (d for d in detections if _plausible_plate_shape(d)),
-        key=lambda d: d.confidence,
-        reverse=True,
-    )
+def _merge_detections(detections: list[PlateDetection], overlap_thresh: float = 0.15) -> list[PlateDetection]:
+    """Combina detecções priorizando fonte (tile > full) e depois confiança.
+
+    Qualquer sobreposição relevante (não só IoU alto) entre uma caixa de tile e uma
+    de imagem inteira faz a de imagem inteira ser descartada — ela é a candidata
+    menos precisa das duas, então nunca deve "vencer" nem ficar como duplicata ao
+    lado da versão correta.
+    """
+    plausible = [d for d in detections if _plausible_plate_shape(d)]
+    tiles = sorted((d for d in plausible if d.source == "tile"), key=lambda d: d.confidence, reverse=True)
+    fulls = sorted((d for d in plausible if d.source == "full"), key=lambda d: d.confidence, reverse=True)
+
     kept: list[PlateDetection] = []
-    for det in ordered:
-        if all(_iou(det, k) < iou_thresh for k in kept):
+    for det in tiles:
+        if all(_iou(det, k) < overlap_thresh for k in kept):
             kept.append(det)
+
+    for det in fulls:
+        if all(_iou(det, k) < overlap_thresh for k in kept):
+            kept.append(det)
+
     return kept
 
 
@@ -148,18 +175,19 @@ def detect_plates(
 ) -> list[PlateDetection]:
     model_name = model_name or config.DEFAULT_MODEL_NAME
     conf_thresh = conf_thresh if conf_thresh is not None else config.DEFAULT_CONF_THRESH
-    detector = _get_detector(model_name, conf_thresh)
 
     height, width = image_bgr.shape[:2]
-    all_detections = _run_pass(detector, image_bgr, 0, 0)
+    full_detector = _get_detector(model_name, conf_thresh)
+    all_detections = _run_pass(full_detector, image_bgr, 0, 0, source="full")
 
     if tiled:
         tile_size = _model_input_size(model_name)
         if max(width, height) > tile_size * 1.35:
+            tile_detector = _get_detector(model_name, _tile_conf_thresh(conf_thresh))
             for (tx1, ty1, tx2, ty2) in _tile_boxes(width, height, tile_size):
                 crop = image_bgr[ty1:ty2, tx1:tx2]
                 if crop.shape[0] < 48 or crop.shape[1] < 48:
                     continue
-                all_detections.extend(_run_pass(detector, crop, tx1, ty1))
+                all_detections.extend(_run_pass(tile_detector, crop, tx1, ty1, source="tile"))
 
     return _merge_detections(all_detections)

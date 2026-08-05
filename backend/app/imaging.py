@@ -78,8 +78,8 @@ def redact_plates(
     for det in detections:
         box_w = det.x2 - det.x1
         box_h = det.y2 - det.y1
-        pad_x = int(box_w * padding_ratio)
-        pad_y = int(box_h * padding_ratio)
+        pad_x = max(2, int(box_w * padding_ratio))
+        pad_y = max(2, int(box_h * padding_ratio))
 
         x1 = max(0, det.x1 - pad_x)
         y1 = max(0, det.y1 - pad_y)
@@ -93,29 +93,29 @@ def redact_plates(
         roi_h, roi_w = roi.shape[:2]
 
         if style == "pixelate":
-            factor = 9
+            factor = 8
             small_w = max(1, roi_w // factor)
             small_h = max(1, roi_h // factor)
             small = cv2.resize(roi, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
-            treated = cv2.resize(small, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
+            treated = cv2.resize(small, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST)
         elif style == "black":
             treated = np.full_like(roi, 20)
-        else:  # "blur" (padrão) — desfoque forte, com borda suavizada
-            k = _odd(min(roi_h, roi_w) * 0.55)
+        else:  # "blur" (padrão) — uma única passada, proporcional à altura da placa.
+            # Testado visualmente: abaixo de ~1.3x a altura da placa os caracteres
+            # continuam parcialmente legíveis (inaceitável); acima de ~1.8x a placa
+            # vira uma mancha praticamente sólida (perde a textura natural). Uma
+            # única passada nessa faixa apaga o texto mas ainda deixa um gradiente
+            # suave, em vez do efeito "chapado" de duas passadas somadas.
+            k = _odd(min(71, max(15, box_h * 1.4)))
             treated = cv2.GaussianBlur(roi, (k, k), 0)
-            # segunda passada mais larga garante que nenhum traço do texto sobreviva
-            k2 = _odd(k * 1.6)
-            treated = cv2.GaussianBlur(treated, (k2, k2), 0)
 
         # A região correspondente à caixa original (sem o padding) precisa ficar
         # sempre 100% coberta; o esmaecimento acontece só na margem de padding ao
-        # redor, para que a transição se funda com o resto da foto em vez de
-        # "colar" um retângulo artificial sobre a placa.
+        # redor — que agora é pequena de propósito — para que a transição se funda
+        # com o resto da foto em vez de "colar" um retângulo artificial sobre a
+        # placa ou criar um halo maior que ela.
         inner = (det.x1 - x1, det.y1 - y1, det.x2 - x1, det.y2 - y1)
-        # Metade do padding disponível vira a dilatação da "semente" (mantém a placa
-        # 100% coberta) e a outra metade é o próprio raio de decaimento até 0 — assim
-        # a transição cabe inteira dentro da margem, sem sobrar degrau em nenhuma ponta.
-        feather_px = max(3, min(pad_x, pad_y) // 2)
+        feather_px = max(2, min(pad_x, pad_y) // 2)
         mask = _feather_mask(roi_h, roi_w, inner, feather_px)[..., None]
         blended = roi.astype(np.float32) * (1 - mask) + treated.astype(np.float32) * mask
         out[y1:y2, x1:x2] = blended.astype(np.uint8)
