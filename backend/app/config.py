@@ -50,8 +50,15 @@ PLATE_ASPECT_RATIO_RANGE = (1.0, 6.0)
 # baixa que já estavam na faixa antes aceita sem restrição (ex.: uma placa real
 # com pouca confiança por estar longe/pequena numa foto com várias motos),
 # fazendo uma foto que antes dava "sucesso" virar "sem placa".
+#
+# PLATE_SQUARE_MIN_CONF calibrado com fotos reais: um adesivo de escapamento
+# (Akrapovič) e uma tomada de parede — ambos quase quadrados — foram detectados
+# a ~0.50-0.53 de confiança, enquanto placas reais quase quadradas (ratio ~1.03)
+# na mesma leva de fotos vieram a ~0.94. 0.75 fica no meio do caminho, só que
+# puxado pro lado seguro (mais perto do que se viu em placa real do que do que
+# se viu em falso positivo).
 PLATE_SQUARE_RATIO_GUARD = 1.15
-PLATE_SQUARE_MIN_CONF = 0.45
+PLATE_SQUARE_MIN_CONF = 0.75
 
 # Estilo de redação aplicado sobre a placa detectada: "blur" | "pixelate" | "black"
 DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
