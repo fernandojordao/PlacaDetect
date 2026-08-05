@@ -102,6 +102,14 @@ Na seção "Processar" da interface:
   borda é suavizada numa faixa fina, para não parecer um adesivo colado por
   cima — nem um borrão grande demais que chama mais atenção que a própria
   placa.
+- **Cabeçalho "BRASIL" preservado**: em placas padrão Mercosul, a faixa azul
+  no topo (BRASIL + QR) é identificada por cor e mantida visível — só a
+  parte com letras/números é redigida, no mesmo espírito de como as placas
+  antigas mantinham a cidade-UF visível. Isso só acontece quando a faixa
+  azul é identificada com confiança (mesmo critério de "seguro por padrão"
+  do resto do sistema); sem essa confiança — placa suja, embaçada, padrão
+  antigo sem essa faixa — a placa inteira é redigida, sem tentar adivinhar
+  onde cortar.
 
 Melhorias adicionais que rodam automaticamente, sem configuração:
 
@@ -130,6 +138,21 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
   quanto do menor dos dois boxes está coberto, não a interseção sobre a
   união (IoU) — resolve isso sem exigir que os dois boxes tenham tamanho
   parecido.
+- **Contorno rotacionado (melhor esforço)**: o sistema tenta achar o
+  contorno real da placa (girado, acompanhando a inclinação de uma moto
+  fotografada em ângulo) por análise clássica de imagem, em vez de usar
+  sempre a caixa alinhada aos eixos do detector — quando encontra com
+  confiança, o desfoque acompanha essa inclinação em vez de ficar sempre
+  "reto" na foto. Isso é bem mais frágil que a detecção do modelo (fotos
+  reais têm barro, reflexo, objetos encostados na placa, o que confunde
+  contorno) e por isso cai para a caixa alinhada aos eixos sempre que não
+  encontra um contorno confiável — o que, testado contra fotos reais, é o
+  caminho mais comum hoje. Sub-produto disso: quando o cabeçalho azul é
+  preservado numa placa inclinada sem um contorno confiável, o corte entre
+  cabeçalho e corpo é uma linha reta na foto (não acompanha a inclinação
+  real da placa), então pode sobrar um pouquinho de desfoque avançando
+  sobre a pontinha do cabeçalho de um dos lados — sempre errando para o
+  lado de borrar a mais, nunca a menos.
 
 Variáveis de ambiente (opcionais, definidas antes de rodar `python3 run.py`):
 
