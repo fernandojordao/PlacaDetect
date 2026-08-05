@@ -134,9 +134,12 @@ def redact_plates(
         # coberto; o esmaecimento acontece só na margem de padding ao redor
         # — que agora é pequena de propósito — para que a transição se funda
         # com o resto da foto em vez de "colar" um retângulo artificial sobre
-        # a placa ou criar um halo maior que ela.
+        # a placa ou criar um halo maior que ela. Testado visualmente: usar
+        # quase toda a margem de padding pra suavizar (em vez de só metade)
+        # deixa a borda visivelmente mais orgânica/natural, sem esticar a
+        # área tratada além do que o padding já cobre.
         min_edge = min(box_w, box_h)
-        feather_px = max(2, int(min_edge * padding_ratio * 0.5))
+        feather_px = max(2, int(min_edge * padding_ratio * 0.85))
         mask = _feather_mask_poly(roi_h, roi_w, core_local, outer_local, feather_px)[..., None]
         blended = roi.astype(np.float32) * (1 - mask) + treated.astype(np.float32) * mask
         out[y1:y2, x1:x2] = blended.astype(np.uint8)
