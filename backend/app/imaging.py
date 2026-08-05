@@ -140,7 +140,16 @@ def redact_plates(
             # usa a altura da caixa detectada inteira (não do corpo, que pode ser
             # menor por causa do corte do cabeçalho) — a escala do borrão segue o
             # tamanho real da placa, não da fração que sobrou pra borrar.
-            k = _odd(min(71, max(15, box_h * 1.4)))
+            #
+            # SEM teto fixo em pixels: um teto absoluto (havia um de 71px) faz
+            # sentido pra foto de celular, mas em fotos de alta resolução
+            # (RAW/.CR3, câmera "de verdade") a placa pode facilmente passar de
+            # 71px de altura sozinha — nesse caso o teto prendia o kernel num
+            # tamanho fixo bem menor que o necessário, deixando as letras ainda
+            # legíveis mesmo com o "desfoque" aplicado (bug real, reportado com
+            # fotos de câmera). O kernel tem que crescer junto com a placa,
+            # sempre proporcional a ela, não a um valor fixo de pixels.
+            k = _odd(max(15, box_h * 1.4))
             treated = cv2.GaussianBlur(roi, (k, k), 0)
 
         # O esmaecimento acontece só PRA DENTRO, perto da borda de `core_poly`
