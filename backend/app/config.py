@@ -37,8 +37,10 @@ DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
 
 # Expande a caixa detectada em X% para garantir cobertura total da placa
 # (o detector é axis-aligned; motos inclinadas podem ter a placa levemente
-# fora da caixa se não houver essa margem).
-BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.18"))
+# fora da caixa se não houver essa margem) e para sobrar espaço ao redor da
+# placa onde o esmaecimento da borda do blur possa se dissolver de forma
+# suave na foto, em vez de parecer um retângulo colado por cima.
+BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.35"))
 
 THUMBNAIL_MAX_SIZE = 480
 
