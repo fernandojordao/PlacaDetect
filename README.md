@@ -114,9 +114,22 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
   a caixa que eles devolvem é usada no lugar da caixa (menos precisa) da
   passada de imagem inteira sempre que as duas se sobrepõem — evita o
   desfoque cair ao lado da placa em vez de em cima dela.
-- **Menos falsos positivos**: detecções com proporção largura/altura muito
-  fora do padrão de uma placa real (por exemplo, um adesivo quadrado na
-  moto) são descartadas mesmo que o modelo tenha alguma confiança nelas.
+- **Menos falsos positivos, sem descartar placas de moto reais**: detecções
+  muito alongadas (faixa/friso comprido na moto) são sempre descartadas.
+  Formas quase quadradas — o caso de um adesivo/refletor redondo, mas também
+  o caso normal de uma placa de moto (já quase quadrada) fotografada em
+  ângulo — só são descartadas quando a confiança do modelo é baixa; com
+  confiança razoável, a forma quase quadrada é aceita como placa.
+- **Sem detecção duplicada na mesma placa**: quando a passada de imagem
+  inteira e um recorte detectam a mesma placa física com caixas que não se
+  sobrepõem o bastante para o algoritmo de deduplicação padrão (comum
+  quando a caixa da imagem inteira é imprecisa), as duas eram tratadas como
+  placas diferentes e as DUAS eram borradas — resultando numa área de
+  desfoque maior e mais deslocada do que a placa real, além do contador de
+  detecções ficar errado. O critério de sobreposição agora considera o
+  quanto do menor dos dois boxes está coberto, não a interseção sobre a
+  união (IoU) — resolve isso sem exigir que os dois boxes tenham tamanho
+  parecido.
 
 Variáveis de ambiente (opcionais, definidas antes de rodar `python3 run.py`):
 

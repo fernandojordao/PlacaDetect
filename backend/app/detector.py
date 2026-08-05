@@ -78,8 +78,11 @@ def _tile_conf_thresh(base_conf: float) -> float:
     """Recortes veem a placa em resolução mais próxima da nativa, então dá pra ser
     mais permissivo sem tanto risco de falso positivo — ajuda a recall em placas
     pequenas/em ângulo sem depender de afrouxar o limiar da imagem inteira (que aí
-    sim tende a gerar mais falso positivo, por ver a foto toda em baixa resolução)."""
-    return max(0.12, round(base_conf * 0.6, 3))
+    sim tende a gerar mais falso positivo, por ver a foto toda em baixa resolução).
+    O filtro de formato (`_plausible_plate_shape`) é a segunda linha de defesa
+    contra falso positivo, então dá pra ser mais permissivo aqui do que pareceria
+    seguro isoladamente."""
+    return max(0.10, round(base_conf * 0.5, 3))
 
 
 def _model_input_size(model_name: str) -> int:
@@ -105,7 +108,7 @@ def _run_pass(detector, image: np.ndarray, offset_x: int, offset_y: int, source:
     return detections
 
 
-def _tile_boxes(width: int, height: int, tile: int, overlap: float = 0.25) -> list[tuple[int, int, int, int]]:
+def _tile_boxes(width: int, height: int, tile: int, overlap: float = 0.35) -> list[tuple[int, int, int, int]]:
     if width <= tile and height <= tile:
         return []
 
@@ -123,16 +126,6 @@ def _tile_boxes(width: int, height: int, tile: int, overlap: float = 0.25) -> li
     return boxes
 
 
-def _iou(a: PlateDetection, b: PlateDetection) -> float:
-    x1, y1 = max(a.x1, b.x1), max(a.y1, b.y1)
-    x2, y2 = min(a.x2, b.x2), min(a.y2, b.y2)
-    inter = max(0, x2 - x1) * max(0, y2 - y1)
-    if inter == 0:
-        return 0.0
-    union = a.area + b.area - inter
-    return inter / union if union > 0 else 0.0
-
-
 def _plausible_plate_shape(det: PlateDetection) -> bool:
     box_w = det.x2 - det.x1
     box_h = det.y2 - det.y1
@@ -140,16 +133,40 @@ def _plausible_plate_shape(det: PlateDetection) -> bool:
         return False
     ratio = max(box_w, box_h) / min(box_w, box_h)
     lo, hi = config.PLATE_ASPECT_RATIO_RANGE
-    return lo <= ratio <= hi
+    if not (lo <= ratio <= hi):
+        return False
+    if ratio < config.PLATE_SQUARE_RATIO_GUARD:
+        return det.confidence >= config.PLATE_SQUARE_MIN_CONF
+    return True
 
 
-def _merge_detections(detections: list[PlateDetection], overlap_thresh: float = 0.15) -> list[PlateDetection]:
+def _overlap_ratio(a: PlateDetection, b: PlateDetection) -> float:
+    """Fração da área do menor dos dois boxes coberta pela interseção.
+
+    Diferente do IoU, isso não penaliza um casamento óbvio só porque os dois boxes
+    têm tamanhos bem diferentes — que é exatamente o caso aqui: o box da passada de
+    imagem inteira é impreciso (às vezes bem maior ou deslocado em relação à placa
+    real), enquanto o box de um tile é justo. Dois boxes assim, apontando para a
+    mesma placa, podem ter IoU baixo mesmo sendo o mesmo objeto — e com IoU eles
+    passavam os dois como "detecções distintas", dobrando a área borrada em cima de
+    uma única placa (e enganando o usuário sobre haver 2 placas).
+    """
+    x1, y1 = max(a.x1, b.x1), max(a.y1, b.y1)
+    x2, y2 = min(a.x2, b.x2), min(a.y2, b.y2)
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    if inter == 0:
+        return 0.0
+    smaller = min(a.area, b.area)
+    return inter / smaller if smaller > 0 else 0.0
+
+
+def _merge_detections(detections: list[PlateDetection], overlap_thresh: float = 0.35) -> list[PlateDetection]:
     """Combina detecções priorizando fonte (tile > full) e depois confiança.
 
-    Qualquer sobreposição relevante (não só IoU alto) entre uma caixa de tile e uma
-    de imagem inteira faz a de imagem inteira ser descartada — ela é a candidata
-    menos precisa das duas, então nunca deve "vencer" nem ficar como duplicata ao
-    lado da versão correta.
+    Qualquer sobreposição relevante entre uma caixa de tile e uma de imagem inteira
+    faz a de imagem inteira ser descartada — ela é a candidata menos precisa das
+    duas, então nunca deve "vencer" nem ficar como duplicata ao lado da versão
+    correta (ver `_overlap_ratio`).
     """
     plausible = [d for d in detections if _plausible_plate_shape(d)]
     tiles = sorted((d for d in plausible if d.source == "tile"), key=lambda d: d.confidence, reverse=True)
@@ -157,11 +174,11 @@ def _merge_detections(detections: list[PlateDetection], overlap_thresh: float = 
 
     kept: list[PlateDetection] = []
     for det in tiles:
-        if all(_iou(det, k) < overlap_thresh for k in kept):
+        if all(_overlap_ratio(det, k) < overlap_thresh for k in kept):
             kept.append(det)
 
     for det in fulls:
-        if all(_iou(det, k) < overlap_thresh for k in kept):
+        if all(_overlap_ratio(det, k) < overlap_thresh for k in kept):
             kept.append(det)
 
     return kept

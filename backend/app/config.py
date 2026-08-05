@@ -32,11 +32,21 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 DEFAULT_MODEL_NAME = os.environ.get("PLACADETECT_MODEL", "yolo-v9-t-640-license-plate-end2end")
 DEFAULT_CONF_THRESH = float(os.environ.get("PLACADETECT_CONF_THRESH", "0.3"))
 
-# Detecções com proporção largura/altura fora dessa faixa são descartadas (mesmo
-# acima do limiar de confiança) — placas reais, mesmo fotografadas em ângulo, não
-# ficam próximas de um quadrado nem extremamente alongadas. Isso filtra falsos
-# positivos como adesivos/refletores redondos ou quadrados na moto.
-PLATE_ASPECT_RATIO_RANGE = (1.15, 6.0)
+# Detecções com proporção largura/altura acima desse teto são descartadas (mesmo
+# acima do limiar de confiança) — nenhuma placa real, nem em ângulo forte, fica
+# tão alongada quanto isso; esse extremo é sinal de faixa/friso comprido na moto.
+PLATE_ASPECT_RATIO_RANGE = (1.0, 6.0)
+
+# Placas de moto (Mercosul) são quase quadradas (~1.2–1.3) e, fotografadas em
+# ângulo, a projeção pode ficar ainda mais próxima de um quadrado perfeito — não
+# dá pra usar "é quase quadrado" sozinho para rejeitar, senão placas reais em
+# ângulo são descartadas junto com adesivos/refletores quadrados/redondos (esse
+# foi o bug: uma moto fotografada de lado ficava com "sucesso" mas sem nenhuma
+# placa redigida, porque a única detecção real foi jogada fora aqui). Abaixo
+# dessa proporção, só aceitamos a detecção se a confiança for razoável — um
+# adesivo/refletor tende a ter confiança bem mais baixa que uma placa de verdade.
+PLATE_SQUARE_RATIO_GUARD = 1.35
+PLATE_SQUARE_MIN_CONF = 0.45
 
 # Estilo de redação aplicado sobre a placa detectada: "blur" | "pixelate" | "black"
 DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
