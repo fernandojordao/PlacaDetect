@@ -30,17 +30,24 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 #   yolo-v9-t-640-license-plate-end2end
 #   yolo-v9-s-608-license-plate-end2end  (mais preciso)
 DEFAULT_MODEL_NAME = os.environ.get("PLACADETECT_MODEL", "yolo-v9-t-640-license-plate-end2end")
-DEFAULT_CONF_THRESH = float(os.environ.get("PLACADETECT_CONF_THRESH", "0.25"))
+DEFAULT_CONF_THRESH = float(os.environ.get("PLACADETECT_CONF_THRESH", "0.3"))
+
+# Detecções com proporção largura/altura fora dessa faixa são descartadas (mesmo
+# acima do limiar de confiança) — placas reais, mesmo fotografadas em ângulo, não
+# ficam próximas de um quadrado nem extremamente alongadas. Isso filtra falsos
+# positivos como adesivos/refletores redondos ou quadrados na moto.
+PLATE_ASPECT_RATIO_RANGE = (1.15, 6.0)
 
 # Estilo de redação aplicado sobre a placa detectada: "blur" | "pixelate" | "black"
 DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
 
 # Expande a caixa detectada em X% para garantir cobertura total da placa
 # (o detector é axis-aligned; motos inclinadas podem ter a placa levemente
-# fora da caixa se não houver essa margem) e para sobrar espaço ao redor da
-# placa onde o esmaecimento da borda do blur possa se dissolver de forma
-# suave na foto, em vez de parecer um retângulo colado por cima.
-BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.35"))
+# fora da caixa se não houver essa margem) e para sobrar uma margem mínima
+# onde a borda do blur possa suavizar. Mantido pequeno de propósito: a área
+# tratada deve acompanhar o tamanho real da placa, não um halo grande ao
+# redor dela — senão o resultado chama mais atenção do que a própria placa.
+BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.12"))
 
 THUMBNAIL_MAX_SIZE = 480
 

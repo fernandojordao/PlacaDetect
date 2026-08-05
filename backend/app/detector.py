@@ -117,8 +117,22 @@ def _iou(a: PlateDetection, b: PlateDetection) -> float:
     return inter / union if union > 0 else 0.0
 
 
+def _plausible_plate_shape(det: PlateDetection) -> bool:
+    box_w = det.x2 - det.x1
+    box_h = det.y2 - det.y1
+    if box_w <= 0 or box_h <= 0:
+        return False
+    ratio = max(box_w, box_h) / min(box_w, box_h)
+    lo, hi = config.PLATE_ASPECT_RATIO_RANGE
+    return lo <= ratio <= hi
+
+
 def _merge_detections(detections: list[PlateDetection], iou_thresh: float = 0.35) -> list[PlateDetection]:
-    ordered = sorted(detections, key=lambda d: d.confidence, reverse=True)
+    ordered = sorted(
+        (d for d in detections if _plausible_plate_shape(d)),
+        key=lambda d: d.confidence,
+        reverse=True,
+    )
     kept: list[PlateDetection] = []
     for det in ordered:
         if all(_iou(det, k) < iou_thresh for k in kept):

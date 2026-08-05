@@ -97,29 +97,31 @@ Na seção "Processar" da interface:
   placa visível, aumente a sensibilidade.
 - **Redação da placa**: `blur` (desfoque forte, padrão), `pixelate`
   (mosaico) ou `black` (caixa sólida). Todas garantem que a placa fique
-  ilegível; a região da placa em si fica sempre 100% coberta, e a transição
-  para o resto da foto é suavizada (esmaecida) na margem ao redor, em vez de
-  colar um retângulo com borda dura sobre a foto.
+  ilegível; a região tratada acompanha o tamanho real da placa (só uma
+  margem pequena a mais, para cobrir imprecisão da detecção em ângulo) e a
+  borda é suavizada numa faixa fina, para não parecer um adesivo colado por
+  cima — nem um borrão grande demais que chama mais atenção que a própria
+  placa.
 
-Duas melhorias adicionais rodam automaticamente, sem configuração:
+Melhorias adicionais que rodam automaticamente, sem configuração:
 
 - **Fotos com várias motos no quadro**: quando a imagem é bem maior que a
   resolução nativa do modelo (comum em fotos horizontais com várias motos
   lado a lado), o sistema também roda a detecção em recortes sobrepostos da
   imagem, além da imagem inteira — placas distantes que encolheriam demais
   numa única passada continuam detectáveis.
-- **Bordas suaves**: a mistura entre a área tratada e o resto da foto usa uma
-  máscara com esmaecimento gradual, então o resultado se funde com o fundo em
-  vez de parecer um adesivo colado sobre a placa.
+- **Menos falsos positivos**: detecções com proporção largura/altura muito
+  fora do padrão de uma placa real (por exemplo, um adesivo quadrado na
+  moto) são descartadas mesmo que o modelo tenha alguma confiança nelas.
 
 Variáveis de ambiente (opcionais, definidas antes de rodar `python3 run.py`):
 
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `PLACADETECT_MODEL` | `yolo-v9-t-640-license-plate-end2end` | Modelo de detecção. Modelos maiores (`yolo-v9-s-608-license-plate-end2end`) são mais precisos porém mais lentos. |
-| `PLACADETECT_CONF_THRESH` | `0.25` | Confiança mínima para considerar uma detecção válida. |
+| `PLACADETECT_CONF_THRESH` | `0.3` | Confiança mínima para considerar uma detecção válida. |
 | `PLACADETECT_REDACTION_STYLE` | `blur` | `blur`, `pixelate` ou `black`. |
-| `PLACADETECT_BOX_PADDING` | `0.35` | Margem extra (%) ao redor da placa detectada, usada tanto para cobertura em ângulo quanto para o esmaecimento da borda. |
+| `PLACADETECT_BOX_PADDING` | `0.12` | Margem extra (%) ao redor da placa detectada — pequena de propósito, para a área tratada acompanhar o tamanho real da placa. |
 | `PLACADETECT_DATA_DIR` | `./data` | Onde ficam o banco, as miniaturas e as fotos processadas. |
 
 ## Processando 5 mil fotos
