@@ -21,6 +21,13 @@ for _dir in (INPUT_DIR, OUTPUT_DIR, THUMBS_DIR):
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
+# RAW da Canon (câmeras EOS R). Decodificado à parte (via rawpy/LibRaw, não o
+# Pillow) em `imaging.load_image_bgr` — ver comentário lá sobre o motivo de
+# não usar só o preview embutido.
+RAW_EXTENSIONS = {".cr3"}
+
+IMAGE_EXTENSIONS = IMAGE_EXTENSIONS | RAW_EXTENSIONS
+
 # Modelo de detecção de placas (open-image-models / YOLOv9 "end2end").
 # Modelos disponíveis (do mais leve/rápido ao mais preciso):
 #   yolo-v9-t-256-license-plate-end2end

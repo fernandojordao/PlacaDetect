@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import rawpy
 from PIL import Image, ImageOps
 
 from . import config, plate_geometry as pgeo
@@ -14,10 +15,28 @@ from .detector import PlateDetection
 
 def load_image_bgr(path: Path) -> np.ndarray:
     """Carrega a imagem já corrigindo a orientação EXIF (comum em fotos de celular)."""
+    if path.suffix.lower() in config.RAW_EXTENSIONS:
+        return _load_raw_bgr(path)
     with Image.open(path) as im:
         im = ImageOps.exif_transpose(im)
         im = im.convert("RGB")
         rgb = np.array(im)
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
+def _load_raw_bgr(path: Path) -> np.ndarray:
+    """Decodifica um RAW (.CR3) na resolução nativa do sensor via LibRaw.
+
+    Faz a demosaicagem completa (`postprocess`) em vez de só extrair o
+    preview/thumbnail embutido no arquivo — o preview costuma vir numa
+    resolução bem menor que o sensor, e o usuário quer especificamente a
+    qualidade total do RAW (é o motivo de fotografar em RAW em primeiro
+    lugar). O balanço de branco "as-shot" da câmera é usado por padrão
+    (`use_camera_wb`), pra não alterar a aparência da foto — o objetivo aqui
+    é só decodificar e depois redigir a placa, não editar a foto.
+    """
+    with rawpy.imread(str(path)) as raw:
+        rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 

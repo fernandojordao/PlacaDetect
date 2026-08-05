@@ -178,6 +178,18 @@ def process_status():
     return {**state, "counts": db.stats()}
 
 
+def _output_filename(original_name: str) -> str:
+    """O arquivo processado é sempre salvo como JPEG (ver `processor.py`),
+    mesmo quando a entrada era outro formato (PNG, RAW/.CR3 etc.) — o nome
+    devolvido pro usuário precisa refletir isso, senão o arquivo baixado tem
+    uma extensão que não bate com o conteúdo de verdade (ex.: um .CR3 que na
+    real é um JPEG por dentro, o que confunde o visualizador de fotos do
+    sistema operacional ao tentar abrir)."""
+    if original_name.lower().endswith((".jpg", ".jpeg")):
+        return original_name
+    return Path(original_name).stem + ".jpg"
+
+
 @app.get("/api/download-zip")
 def download_zip(status: str = "success"):
     photos, _ = db.list_photos(status=status, page=1, page_size=100000)
@@ -192,9 +204,7 @@ def download_zip(status: str = "success"):
             out_path = Path(p["output_path"])
             if not out_path.exists():
                 continue
-            name = p["filename"]
-            if not name.lower().endswith((".jpg", ".jpeg")):
-                name = Path(name).stem + ".jpg"
+            name = _output_filename(p["filename"])
             if name in used_names:
                 name = f"{p['id']}_{name}"
             used_names.add(name)
@@ -216,7 +226,7 @@ def download_single(photo_id: int):
     path = Path(photo["output_path"])
     if not path.exists():
         raise HTTPException(404, "Arquivo não encontrado em disco")
-    return FileResponse(path, filename=photo["filename"])
+    return FileResponse(path, filename=_output_filename(photo["filename"]))
 
 
 def _attach_urls(photo: dict) -> None:

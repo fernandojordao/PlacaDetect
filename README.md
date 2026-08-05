@@ -52,6 +52,21 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
 
+## Formatos suportados
+
+JPEG, PNG, WEBP, BMP, TIFF, e RAW da Canon (`.CR3`, câmeras EOS R). Fotos
+`.CR3` são decodificadas na resolução nativa do sensor via
+[rawpy](https://github.com/letmaik/rawpy)/LibRaw — não é só o preview
+embutido no arquivo — com o balanço de branco "as-shot" da câmera (o mesmo
+resultado que a maioria dos conversores RAW mostra por padrão, sem alterar
+a aparência da foto). Isso é bem mais lento e consome mais memória que abrir
+um JPEG (decodificar + demosaicar um RAW de 30-45 MP pode levar alguns
+segundos por foto, contra frações de segundo pra um JPEG), o que é esperado
+— é o preço de trabalhar direto com o sensor em vez de um JPEG já
+comprimido pela câmera. O resultado final continua sendo salvo como JPEG
+(ver "Baixar em resolução original"/"Baixar prontos"), já que o objetivo é
+publicar a foto redigida, não editar/arquivar o RAW.
+
 ## Uso
 
 ```bash
