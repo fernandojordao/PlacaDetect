@@ -98,11 +98,17 @@ Na seção "Processar" da interface:
 - **Limitação conhecida**: em raras fotos, uma placa perfeitamente legível
   não é detectada mesmo em qualquer sensibilidade — não é um problema de
   limiar/configuração, é o modelo de detecção em si não reconhecendo aquela
-  placa específica (testado: nem recortando a foto só na placa, bem ampliada,
-  nem trocando pro modelo mais preciso disponível mudou o resultado). Isso é
-  raro, mas quando acontecer, revise manualmente o resultado antes de
-  publicar a foto — o "Sucesso"/"Sem placa" reflete só as placas que o
-  modelo conseguiu identificar.
+  placa específica. Testado a fundo num caso real (placa numa moto com
+  suporte que a projeta para longe do rabeta, ao lado de um carro claro ao
+  fundo): nem isolar a placa num recorte bem ampliado, nem trocar para
+  outro modelo/resolução disponível na biblioteca resolveu de forma
+  confiável — um modelo alternativo até encontra a placa às vezes, mas
+  junto traz vários falsos positivos novos em qualquer foto, então trocar
+  não compensa. Decisão consciente: manter o fluxo 100% automático mesmo
+  assim (em vez de adicionar ajuste manual na interface) — quando acontecer,
+  revise manualmente o resultado antes de publicar a foto, já que o
+  "Sucesso"/"Sem placa" reflete só as placas que o modelo conseguiu
+  identificar.
 - **Redação da placa**: `blur` (desfoque forte, padrão), `pixelate`
   (mosaico) ou `black` (caixa sólida). Todas garantem que a placa fique
   ilegível; a região tratada acompanha o tamanho real da placa (só uma
