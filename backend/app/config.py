@@ -41,11 +41,16 @@ PLATE_ASPECT_RATIO_RANGE = (1.0, 6.0)
 # ângulo, a projeção pode ficar ainda mais próxima de um quadrado perfeito — não
 # dá pra usar "é quase quadrado" sozinho para rejeitar, senão placas reais em
 # ângulo são descartadas junto com adesivos/refletores quadrados/redondos (esse
-# foi o bug: uma moto fotografada de lado ficava com "sucesso" mas sem nenhuma
-# placa redigida, porque a única detecção real foi jogada fora aqui). Abaixo
-# dessa proporção, só aceitamos a detecção se a confiança for razoável — um
-# adesivo/refletor tende a ter confiança bem mais baixa que uma placa de verdade.
-PLATE_SQUARE_RATIO_GUARD = 1.35
+# foi o bug original: uma moto fotografada de lado ficava com "sucesso" mas sem
+# nenhuma placa redigida, porque a única detecção real foi jogada fora aqui).
+#
+# O guard só deve criar uma zona de exceção NOVA, abaixo do antigo piso rígido
+# (1.15) — nunca reduzir o que já passava antes. Colocar o guard acima de 1.15
+# foi, ele mesmo, um bug: reintroduziu a rejeição para detecções de confiança
+# baixa que já estavam na faixa antes aceita sem restrição (ex.: uma placa real
+# com pouca confiança por estar longe/pequena numa foto com várias motos),
+# fazendo uma foto que antes dava "sucesso" virar "sem placa".
+PLATE_SQUARE_RATIO_GUARD = 1.15
 PLATE_SQUARE_MIN_CONF = 0.45
 
 # Estilo de redação aplicado sobre a placa detectada: "blur" | "pixelate" | "black"
@@ -57,7 +62,11 @@ DEFAULT_REDACTION_STYLE = os.environ.get("PLACADETECT_REDACTION_STYLE", "blur")
 # onde a borda do blur possa suavizar. Mantido pequeno de propósito: a área
 # tratada deve acompanhar o tamanho real da placa, não um halo grande ao
 # redor dela — senão o resultado chama mais atenção do que a própria placa.
-BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.12"))
+# É esse padding (não a força do blur) que controla o "tamanho" visual do
+# desfoque: a placa em si (dentro da caixa original) já fica 100% coberta
+# independente do valor aqui — reduzir isso só encolhe a margem de transição
+# ao redor, deixando o resultado mais colado à placa.
+BOX_PADDING_RATIO = float(os.environ.get("PLACADETECT_BOX_PADDING", "0.08"))
 
 THUMBNAIL_MAX_SIZE = 480
 
