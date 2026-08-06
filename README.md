@@ -152,6 +152,19 @@ Melhorias adicionais que rodam automaticamente, sem configuração:
   a caixa que eles devolvem é usada no lugar da caixa (menos precisa) da
   passada de imagem inteira sempre que as duas se sobrepõem — evita o
   desfoque cair ao lado da placa em vez de em cima dela.
+- **Recortes também escalam pra fotos de resolução muito alta**: os recortes
+  acima são sempre do tamanho nativo do modelo (ex.: 640px) — ótimo pra
+  fotos de celular, mas cada recorte passa a cobrir uma fatia
+  proporcionalmente bem menor da cena numa foto de câmera de verdade
+  (RAW/.CR3, que decodifica na resolução do sensor — várias vezes maior).
+  Isso tem um efeito sutil e real: a mesma placa, na mesma foto, pode ser
+  detectada numa resolução e não na outra, só por causa da escala relativa
+  entre o recorte e a cena — confirmado testando a mesma foto redimensionada
+  em escalas diferentes. Por isso, em fotos bem maiores que o normal, uma
+  segunda camada de recortes (proporcionalmente maiores, escaladas com a
+  resolução da própria imagem) roda em paralelo — mantém a fração da cena
+  coberta por recorte parecida entre uma foto de celular e uma foto de RAW
+  de alta resolução, em vez de deixar isso variar com o tamanho da imagem.
 - **Menos falsos positivos, sem descartar placas de moto reais**: detecções
   muito alongadas (faixa/friso comprido na moto) são sempre descartadas.
   Formas quase quadradas — o caso de um adesivo/refletor redondo, mas também

@@ -184,6 +184,15 @@ def _merge_detections(detections: list[PlateDetection], overlap_thresh: float = 
     return kept
 
 
+
+# Resolução "de referência" em que a estratégia de tiling (recorte no
+# tamanho nativo do modelo) foi testada e validada contra fotos reais. Fotos
+# MUITO maiores que isso (RAW de câmera/.CR3, que decodificam na resolução
+# do sensor — várias vezes maior que uma foto de celular) recebem também uma
+# segunda passada com tiles proporcionalmente maiores (ver `detect_plates`).
+_TILING_REFERENCE_LONG_SIDE = 1600
+
+
 def detect_plates(
     image_bgr: np.ndarray,
     model_name: str | None = None,
@@ -198,13 +207,33 @@ def detect_plates(
     all_detections = _run_pass(full_detector, image_bgr, 0, 0, source="full")
 
     if tiled:
-        tile_size = _model_input_size(model_name)
-        if max(width, height) > tile_size * 1.35:
+        native_tile = _model_input_size(model_name)
+        long_side = max(width, height)
+        if long_side > native_tile * 1.35:
             tile_detector = _get_detector(model_name, _tile_conf_thresh(conf_thresh))
-            for (tx1, ty1, tx2, ty2) in _tile_boxes(width, height, tile_size):
-                crop = image_bgr[ty1:ty2, tx1:tx2]
-                if crop.shape[0] < 48 or crop.shape[1] < 48:
-                    continue
-                all_detections.extend(_run_pass(tile_detector, crop, tx1, ty1, source="tile"))
+            tile_sizes = {native_tile}
+
+            # Recorte no tamanho nativo tem uma desvantagem em fotos MUITO
+            # maiores que a referência: cada tile passa a cobrir uma fatia
+            # proporcionalmente bem menor da cena do que cobria numa foto de
+            # celular — o oposto do problema original (placa pequena demais
+            # na passada de imagem inteira), mas com o mesmo efeito líquido:
+            # detecção que funciona numa resolução e falha em outra, mesmo
+            # sendo exatamente a mesma cena/placa. Escalar o tile junto com a
+            # resolução da imagem mantém a fração da cena por tile parecida
+            # em qualquer resolução — o próprio `predict()` já redimensiona
+            # o recorte pro tamanho de entrada do modelo por baixo dos panos,
+            # então um tile maior aqui não muda o custo do modelo em si, só
+            # quantos tiles cabem na imagem.
+            if long_side > _TILING_REFERENCE_LONG_SIDE * 1.5:
+                scale = long_side / _TILING_REFERENCE_LONG_SIDE
+                tile_sizes.add(int(native_tile * scale))
+
+            for tile_size in tile_sizes:
+                for (tx1, ty1, tx2, ty2) in _tile_boxes(width, height, tile_size):
+                    crop = image_bgr[ty1:ty2, tx1:tx2]
+                    if crop.shape[0] < 48 or crop.shape[1] < 48:
+                        continue
+                    all_detections.extend(_run_pass(tile_detector, crop, tx1, ty1, source="tile"))
 
     return _merge_detections(all_detections)
